@@ -1,0 +1,48 @@
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("@rules_oci//oci:defs.bzl", "oci_image")
+load("@tar.bzl", "tar")
+
+write_file(
+    name = "hello",
+    out = "hello.txt",
+    content = ["hello"],
+)
+
+tar(
+    name = "layer",
+    srcs = [":hello"],
+)
+
+oci_image(
+    name = "base",
+    architecture = "amd64",
+    os = "linux",
+    tars = [":layer"],
+)
+
+# image.sh must write a fresh, writable oci-layout when it starts from a base.
+# On Windows a copy keeps the read-only attribute of its Bazel input, and regctl
+# then fails to rewrite the file.
+sh_test(
+    name = "writable_oci_layout_test",
+    srcs = ["writable_oci_layout_test.bash"],
+    args = [
+        "$(rootpath //oci/private:image.sh)",
+        "$(JQ_BIN)",
+        "$(COREUTILS_BIN)",
+        "$(REGCTL_BIN)",
+        "$(rootpath :base)",
+    ],
+    data = [
+        ":base",
+        "//oci/private:image.sh",
+        "@coreutils_toolchains//:resolved_toolchain",
+        "@jq_toolchains//:resolved_toolchain",
+        "@oci_regctl_toolchains//:current_toolchain",
+    ],
+    toolchains = [
+        "@coreutils_toolchains//:resolved_toolchain",
+        "@jq_toolchains//:resolved_toolchain",
+        "@oci_regctl_toolchains//:current_toolchain",
+    ],
+)
